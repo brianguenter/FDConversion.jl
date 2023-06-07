@@ -67,9 +67,9 @@ end
 
     from_dag = to_symbolics.(FD_funcs)
     for i in 1:1_000
-        tx, ty, tz = rand(3)
+        tx, ty, tz = rand(BigFloat, 3)
         subs = Dict([sx => tx, sy => ty, sz => tz])
-        @assert isapprox(FD_eval([tx, ty, tz]), Symbolics.substitute.(Sym_funcs, Ref(subs)), atol=1e-12)
+        @test isapprox(FD_eval([tx, ty, tz]), Symbolics.substitute.(Sym_funcs, Ref(subs)), atol=1e-12)
     end
 end
 

@@ -5,7 +5,8 @@ import Symbolics
 import SymbolicUtils
 import FastDifferentiation as FD
 using FastDifferentiation.AutomaticDifferentiation
-"""converts from dag to Symbolics expression"""
+
+"""converts from Node to Symbolics expression"""
 function to_symbolics(a::T, cache::IdDict=IdDict()) where {T<:FD.Node}
     tmp = get(cache, a, nothing)
     if tmp !== nothing
@@ -15,7 +16,7 @@ function to_symbolics(a::T, cache::IdDict=IdDict()) where {T<:FD.Node}
             if FD.is_constant(a)
                 cache[a] = Num(FD.value(a))
             elseif FD.is_variable(a)
-                cache[a] = Symbolics.variable(FD.value(a)) #convert everything to Num type. This will wrap types like Int64,Float64, etc., but will not double wrap nodes that are Num types already.
+                cache[a] = Symbolics.variable(FD.value(a))
             else
                 throw(ErrorException("Node with 0 children was neither constant nor variable. This should never happen."))
             end
@@ -190,7 +191,7 @@ function test()
 
     from_dag = to_symbolics.(FD_funcs)
     for i in 1:1_000
-        tx, ty, tz = rand(3)
+        tx, ty, tz = rand(BigFloat, 3)
         subs = Dict([sx => tx, sy => ty, sz => tz])
         @assert isapprox(FD_eval([tx, ty, tz]), Symbolics.substitute.(Sym_funcs, Ref(subs)), atol=1e-12)
     end
