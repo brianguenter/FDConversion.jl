@@ -1,36 +1,76 @@
 
+module ConversionTests
+
+using TestItems
+
 @testitem "all_nodes" begin
-    using FastSymbolicDifferentiation
+    # Testing for equivalence of expression graphs is inherently difficult. 
+    # Symbolics and FastDifferentiation apply different ordering rules and simplifications at expression construction time
+    # and these rules may change over time. Example:
+
+    # Symbolics reorders terms in * expressions
+
+    # Symbolics.@variables x y
+    # julia> x*y
+    # x*y
+    # julia> y*x
+    # x*y
+
+    # FastDifferentiation does not reorder terms as of v0.2.0
+
+    # julia> FastDifferentiation.@variables x1 y1
+    # julia> x1*y1
+    # (x1 * y1)
+    # julia> y1*x1
+    # (y1 * x1)
+
+    # Most reliable way to test for equivalence is to evaluate the function at many points and test for equality of result.
+
+    import FastDifferentiation as FD
     import Symbolics
 
     Symbolics.@variables x y
-    expr_to_dag(x^2 + y * (x^2), cache), x, y
-    cache = IdDict()
-    dag, x, y = simple_dag(cache)
 
-    correct = expr_to_dag.([((x^2) + (y * (x^2))), (x^2), x, 2, (y * (x^2)), y], Ref(cache))
-    tmp = all_nodes(dag)
+    cache = IdDict()
+    symbolics_expr = x^2 + y * (x^2)
+    dag = to_FD(symbolics_expr, cache)
+    fdx, fdy = FD.variables(dag)
+
+    correct = fdx^2 + fdy * (fdx^2)
+    correct_fun = FD.make_function([correct], [fdx, fdy])
 
     #verify that all the node expressions exist in the dag. Can't rely on them being in a particular order because Symbolics can
     #arbitrarily choose how to reorder trees.
-    for expr in correct
-        @test in(expr, tmp)
+    num_tests = 10, 000
+    for _ in num_tests
+        for (xval, yval) in rand(2)
+            FDval = correct_fun(xval, yval)
+            Syval = Symbolics.substitute(symbolics_expr, Dict([(x, xval), (y, yval)]))
+            @test isapprox(FDval, Syval)
+        end
     end
 end
 
 
-@testitem "conversion from graph of FastSymbolicDifferentiation.Node to Symbolics expression" begin
-    using FastSymbolicDifferentiation
+@testitem "to_symbolics" begin #test conversion from FD to Symbolics
+    import FastDifferentiation as FD
     import Symbolics
 
-    order = 7
-    @variables x y z
+    order = 8
+    FD.@variables x y z
+    Symbolics.@variables sx, sy, sz
 
-    derivs = Symbolics.jacobian(SHFunctions(order, x, y, z), [x, y, z]; simplify=true)
-    # show(@time SHDerivatives(order,x,y,z))
-    tmp = expr_to_dag.(derivs)
-    # show(@time expr_to_dag.(derivs))
-    from_dag = to_symbolics.(tmp)
-    subs = Dict([x => rand(), y => rand(), z => rand()])
-    @test isapprox(map(xx -> xx.val, Symbolics.substitute.(derivs, Ref(subs))), map(xx -> xx.val, Symbolics.substitute.(from_dag, Ref(subs))), atol=1e-12)
+    FD_funcs = FD.Node.(SHFunctions(order, x, y, z))
+    Sym_funcs = SHFunctions(order, sx, sy, sz)
+
+    FD_eval = FD.make_function(FD_funcs, [x, y, z])
+
+    from_dag = to_symbolics.(FD_funcs)
+    for i in 1:1_000
+        tx, ty, tz = rand(3)
+        subs = Dict([sx => tx, sy => ty, sz => tz])
+        @assert isapprox(FD_eval([tx, ty, tz]), Symbolics.substitute.(Sym_funcs, Ref(subs)), atol=1e-12)
+    end
 end
+
+end #module
