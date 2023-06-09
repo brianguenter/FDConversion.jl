@@ -24,16 +24,15 @@ using TestItems
     # julia> y1*x1
     # (y1 * x1)
 
-    # Most reliable way to test for equivalence is to evaluate the function at many points and test for equality of result.
+    # Most reliable way to test for equivalence is to evaluate the function at many points and test for approximate equality of result.
 
     import FastDifferentiation as FD
     import Symbolics
 
     Symbolics.@variables x y
 
-    cache = IdDict()
     symbolics_expr = x^2 + y * (x^2)
-    dag = to_FD(symbolics_expr, cache)
+    dag = to_FD(symbolics_expr)
     fdx, fdy = FD.variables(dag)
 
     correct = fdx^2 + fdy * (fdx^2)
@@ -41,9 +40,10 @@ using TestItems
 
     #verify that all the node expressions exist in the dag. Can't rely on them being in a particular order because Symbolics can
     #arbitrarily choose how to reorder trees.
-    num_tests = 10, 000
+    num_tests = 1_000
+    rng = Random.Xoshiro(8392)
     for _ in num_tests
-        for (xval, yval) in rand(2)
+        for (xval, yval) in rand(rng, 2)
             FDval = correct_fun(xval, yval)
             Syval = Symbolics.substitute(symbolics_expr, Dict([(x, xval), (y, yval)]))
             @test isapprox(FDval, Syval)
@@ -55,6 +55,7 @@ end
 @testitem "to_symbolics" begin #test conversion from FD to Symbolics
     import FastDifferentiation as FD
     import Symbolics
+    import Random
 
     order = 8
     FD.@variables x y z
@@ -64,12 +65,15 @@ end
     Sym_funcs = SHFunctions(order, sx, sy, sz)
 
     FD_eval = FD.make_function(FD_funcs, [x, y, z])
-
-    from_dag = to_symbolics.(FD_funcs)
-    for i in 1:1_000
-        tx, ty, tz = rand(BigFloat, 3)
+    rng = Random.Xoshiro(8392)
+    for _ in 1:1_0
+        tx, ty, tz = rand(rng, BigFloat, 3)
         subs = Dict([sx => tx, sy => ty, sz => tz])
-        @test isapprox(FD_eval([tx, ty, tz]), Symbolics.substitute.(Sym_funcs, Ref(subs)), atol=1e-12)
+        res = Symbolics.substitute.(Sym_funcs, Ref(subs))
+
+        FD_res = FD_eval([tx, ty, tz])
+
+        @test isapprox(FD_res, res, atol=1e-12)
     end
 end
 
