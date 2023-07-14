@@ -12,7 +12,7 @@ using TestItems
     Symbolics.@variables x y
 
     symbolics_expr = x^2 + y * (x^2)
-    dag = to_FD(symbolics_expr)
+    dag = to_fd(symbolics_expr)
     vars = FD.variables(dag)
     fdx, fdy = FD.value(vars[1]) == :x ? (vars[1], vars[2]) : (vars[2], vars[1]) #need to find the variables since they can be in any order
 
@@ -41,10 +41,11 @@ end
 
     order = 8
     FD.@variables x y z
-    Symbolics.@variables sx, sy, sz
 
     FD_funcs = FD.Node.(SHFunctions(order, x, y, z))
-    Sym_funcs = SHFunctions(order, sx, sy, sz)
+    Sym_funcs, variables = to_symbolics(FD_funcs)
+
+    sx, sy, sz = map(p -> variables[p], [x, y, z])
 
     FD_eval = FD.make_function(FD_funcs, [x, y, z])
     rng = Random.Xoshiro(8392)
@@ -55,8 +56,6 @@ end
 
         FD_res = FD_eval([tx, ty, tz])
 
-        @test isapprox(FD_res, res, atol=1e-12)
+        @assert isapprox(FD_res, res, atol=1e-12)
     end
 end
-
-end #module

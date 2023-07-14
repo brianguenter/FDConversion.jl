@@ -8,7 +8,7 @@ using FastDifferentiation.AutomaticDifferentiation
 import Random
 
 """converts from Node to Symbolics expression"""
-function to_symbolics(a::T, cache::IdDict=IdDict()) where {T<:FD.Node}
+function _to_symbolics!(a::T, cache::IdDict, variable_map::IdDict) where {T<:FD.Node}
     tmp = get(cache, a, nothing)
     if tmp !== nothing
         return tmp
@@ -17,34 +17,47 @@ function to_symbolics(a::T, cache::IdDict=IdDict()) where {T<:FD.Node}
             if FD.is_constant(a)
                 cache[a] = Symbolics.Num(FD.value(a))
             elseif FD.is_variable(a)
-                cache[a] = Symbolics.variable(FD.value(a))
+                tmp = Symbolics.variable(FD.value(a))
+                cache[a] = tmp
+                variable_map[a] = tmp
             else
                 throw(ErrorException("Node with 0 children was neither constant nor variable. This should never happen."))
             end
         else
             if FD.arity(a) === 1
-                cache[a] = a.node_value(to_symbolics(a.children[1], cache))
+                cache[a] = a.node_value(_to_symbolics!(a.children[1], cache, variable_map))
             else
-                cache[a] = foldl(a.node_value, to_symbolics.(a.children, Ref(cache)))
+                cache[a] = foldl(a.node_value, _to_symbolics!.(a.children, Ref(cache), Ref(variable_map)))
             end
         end
-
-        return cache[a]
     end
 end
-export to_symbolics
+export _to_symbolics!
 
-to_symbolics(a::AbstractVector{T}, cache::IdDict=IdDict()) where {T<:FD.Node} = to_symbolics.(a, Ref(cache))
+function to_symbolics(a::T) where {T<:FD.Node}
+    cache = IdDict()
+    variable_map = IdDict()
+    _to_symbolics!(a, cache, variable_map)
+    return cache[a], variable_map
+end
 
-to_FD(x::FD.AutomaticDifferentiation.NoDeriv, cache, substitions) = FD.Node(NaN) #when taking the derivative with respect to the first element of 1.0*x Symbolics.derivative will return Symbolics.NoDeriv. These derivative values will never be used (or should never be used) in my derivative computation so set to NaN so error will show up if this ever happens.
+function to_symbolics(a::AbstractVector{T}) where {T<:FD.Node}
+    cache::IdDict = IdDict()
+    variable_map::IdDict = IdDict()
+
+    _to_symbolics!.(a, Ref(cache), Ref(variable_map))
+    return map(x -> cache[x], a), variable_map
+end
+
+to_fd(x::FD.AutomaticDifferentiation.NoDeriv, cache, substitions) = FD.Node(NaN) #when taking the derivative with respect to the first element of 1.0*x Symbolics.derivative will return Symbolics.NoDeriv. These derivative values will never be used (or should never be used) in my derivative computation so set to NaN so error will show up if this ever happens.
 
 
-function to_FD(x::Real)
+function to_fd(x::Real)
     cache = IdDict()
     substitutions = IdDict()
     return _to_FD(x, cache, substitutions)
 end
-export to_FD
+export to_fd
 
 
 function _to_FD(sym_node, cache::IdDict, visited::IdDict)
@@ -183,7 +196,7 @@ function test()
     Symbolics.@variables sx, sy, sz
 
     Sym_funcs = SHFunctions(order, sx, sy, sz)
-    FD_funcs = to_FD.(SymFuncs)
+    FD_funcs = to_fd.(SymFuncs)
     fd_vars = FD.variables(FD_funcs)
 
 
@@ -206,7 +219,7 @@ function test2()
     Symbolics.@variables x y
 
     symbolics_expr = x^2 + y * (x^2)
-    dag = to_FD(symbolics_expr)
+    dag = to_fd(symbolics_expr)
     vars = FD.variables(dag)
     fdx, fdy = FD.value(vars[1]) == :x ? (vars[1], vars[2]) : (vars[2], vars[1]) #need to find the variables since they can be in any order
 
