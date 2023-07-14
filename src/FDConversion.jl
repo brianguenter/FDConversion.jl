@@ -15,7 +15,7 @@ function to_symbolics(a::T, cache::IdDict=IdDict()) where {T<:FD.Node}
     else
         if FD.arity(a) === 0
             if FD.is_constant(a)
-                cache[a] = Num(FD.value(a))
+                cache[a] = Symbolics.Num(FD.value(a))
             elseif FD.is_variable(a)
                 cache[a] = Symbolics.variable(FD.value(a))
             else
@@ -38,6 +38,7 @@ to_symbolics(a::AbstractVector{T}, cache::IdDict=IdDict()) where {T<:FD.Node} = 
 
 to_FD(x::FD.AutomaticDifferentiation.NoDeriv, cache, substitions) = FD.Node(NaN) #when taking the derivative with respect to the first element of 1.0*x Symbolics.derivative will return Symbolics.NoDeriv. These derivative values will never be used (or should never be used) in my derivative computation so set to NaN so error will show up if this ever happens.
 
+
 function to_FD(x::Real)
     cache = IdDict()
     substitutions = IdDict()
@@ -46,12 +47,13 @@ end
 export to_FD
 
 
-function _to_FD(sym_node::Real, cache::IdDict, visited::IdDict)
+function _to_FD(sym_node, cache::IdDict, visited::IdDict)
     # Substitutions are done on a Node graph, not a SymbolicsUtils.Sym graph. As a consequence the values
     # in substitutions Dict are Node not Sym type. cache has keys (op,args...) where op is generally a function type but sometimes a Sym, 
     # and args are all Node types.
 
-    symx = sym_node.val
+    symx = isa(sym_node, Symbolics.Num) ? sym_node.val : sym_node
+    @assert typeof(symx) != Symbolics.Num
 
     tmpsub = get(visited, symx, nothing)
     if tmpsub !== nothing
@@ -63,14 +65,18 @@ function _to_FD(sym_node::Real, cache::IdDict, visited::IdDict)
     if tmp !== nothing
         return tmp
     elseif !SymbolicUtils.istree(symx)
+        if SymbolicUtils.issym(symx)
+            tmpnode = FD.Node(Symbol(symx))
+        else #must be a number of some kind
+            tmpnode = FD.Node(symx)
+        end
 
-        tmpnode = FD.Node(symx)
         cache[symx] = tmpnode
 
         return tmpnode
     else
         numargs = length(SymbolicUtils.arguments(symx))
-        symargs = MVector{numargs}(SymbolicUtils.arguments(symx))
+        symargs = SymbolicUtils.arguments(symx)
 
         args = _to_FD.(symargs, Ref(cache), Ref(visited))
 
@@ -80,7 +86,7 @@ function _to_FD(sym_node::Real, cache::IdDict, visited::IdDict)
         if tmp !== nothing
             return tmp
         else
-            tmpnode = FD.Node(SymbolicUtils.operation(symx), args)
+            tmpnode = FD.Node(SymbolicUtils.operation(symx), args...)
             cache[key] = tmpnode
 
             return tmpnode
@@ -174,11 +180,12 @@ export SHFunctions
 
 function test()
     order = 8
-    FD.@variables x y z
     Symbolics.@variables sx, sy, sz
 
-    FD_funcs = FD.Node.(SHFunctions(order, x, y, z))
     Sym_funcs = SHFunctions(order, sx, sy, sz)
+    FD_funcs = to_FD.(SymFuncs)
+    fd_vars = FD.variables(FD_funcs)
+
 
     FD_eval = FD.make_function(FD_funcs, [x, y, z])
     rng = Random.Xoshiro(8392)
@@ -194,4 +201,32 @@ function test()
 end
 export test
 
+function test2()
+
+    Symbolics.@variables x y
+
+    symbolics_expr = x^2 + y * (x^2)
+    dag = to_FD(symbolics_expr)
+    vars = FD.variables(dag)
+    fdx, fdy = FD.value(vars[1]) == :x ? (vars[1], vars[2]) : (vars[2], vars[1]) #need to find the variables since they can be in any order
+
+    correct_fun = FD.make_function([dag], [fdx, fdy])
+
+
+    #verify that all the node expressions exist in the dag. Can't rely on them being in a particular order because Symbolics can
+    #arbitrarily choose how to reorder trees.
+    num_tests = 1_000
+    rng = Random.Xoshiro(8392)
+    for _ in 1:num_tests
+        (xval, yval) = rand(rng, 2)
+        FDval = correct_fun([xval, yval])[1]
+        Syval = Symbolics.substitute(symbolics_expr, Dict([(x, xval), (y, yval)]))
+
+        @assert isapprox(FDval, Syval.val)
+
+    end
+end
+export test2
+
+include("scratchpad.jl")
 end # module FSDConvert

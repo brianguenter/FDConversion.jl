@@ -3,51 +3,33 @@ module ConversionTests
 
 using TestItems
 
-@testitem "all_nodes" begin
-    # Testing for equivalence of expression graphs is inherently difficult. 
-    # Symbolics and FastDifferentiation apply different ordering rules and simplifications at expression construction time
-    # and these rules may change over time. Example:
+@testitem "to_FD" begin
 
-    # Symbolics reorders terms in * expressions
-
-    # Symbolics.@variables x y
-    # julia> x*y
-    # x*y
-    # julia> y*x
-    # x*y
-
-    # FastDifferentiation does not reorder terms as of v0.2.0
-
-    # julia> FastDifferentiation.@variables x1 y1
-    # julia> x1*y1
-    # (x1 * y1)
-    # julia> y1*x1
-    # (y1 * x1)
-
-    # Most reliable way to test for equivalence is to evaluate the function at many points and test for approximate equality of result.
-
-    import FastDifferentiation as FD
     import Symbolics
+    import FastDifferentiation as FD
+    using Random
 
     Symbolics.@variables x y
 
     symbolics_expr = x^2 + y * (x^2)
     dag = to_FD(symbolics_expr)
-    fdx, fdy = FD.variables(dag)
+    vars = FD.variables(dag)
+    fdx, fdy = FD.value(vars[1]) == :x ? (vars[1], vars[2]) : (vars[2], vars[1]) #need to find the variables since they can be in any order
 
-    correct = fdx^2 + fdy * (fdx^2)
-    correct_fun = FD.make_function([correct], [fdx, fdy])
+    correct_fun = FD.make_function([dag], [fdx, fdy])
+
 
     #verify that all the node expressions exist in the dag. Can't rely on them being in a particular order because Symbolics can
     #arbitrarily choose how to reorder trees.
     num_tests = 1_000
     rng = Random.Xoshiro(8392)
-    for _ in num_tests
-        for (xval, yval) in rand(rng, 2)
-            FDval = correct_fun(xval, yval)
-            Syval = Symbolics.substitute(symbolics_expr, Dict([(x, xval), (y, yval)]))
-            @test isapprox(FDval, Syval)
-        end
+    for _ in 1:num_tests
+        (xval, yval) = rand(rng, 2)
+        FDval = correct_fun([xval, yval])[1]
+        Syval = Symbolics.substitute(symbolics_expr, Dict([(x, xval), (y, yval)]))
+
+        @test isapprox(FDval, Syval.val)
+
     end
 end
 
