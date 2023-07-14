@@ -1,6 +1,5 @@
 module FDConversion
 
-using StaticArrays
 import Symbolics
 import SymbolicUtils
 import FastDifferentiation as FD
