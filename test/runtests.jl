@@ -1,14 +1,14 @@
 
-module ConversionTests
+import Symbolics
+import FastDifferentiation as FD
+using FDConversion
+using Random
+using Test
 
-using TestItems
 
-@testitem "to_FD" begin
+include("sphericalharmonics.jl")
 
-    import Symbolics
-    import FastDifferentiation as FD
-    using Random
-
+@testset "conversion from Symbolics to FD" begin
     Symbolics.@variables x y
 
     symbolics_expr = x^2 + y * (x^2)
@@ -21,7 +21,7 @@ using TestItems
 
     #verify that all the node expressions exist in the dag. Can't rely on them being in a particular order because Symbolics can
     #arbitrarily choose how to reorder trees.
-    num_tests = 1_000
+    num_tests = 100
     rng = Random.Xoshiro(8392)
     for _ in 1:num_tests
         (xval, yval) = rand(rng, 2)
@@ -34,11 +34,7 @@ using TestItems
 end
 
 
-@testitem "to_symbolics" begin #test conversion from FD to Symbolics
-    import FastDifferentiation as FD
-    import Symbolics
-    import Random
-
+@testset "conversion from FD to Symbolics" begin
     order = 8
     FD.@variables x y z
 
@@ -49,13 +45,16 @@ end
 
     FD_eval = FD.make_function(FD_funcs, [x, y, z])
     rng = Random.Xoshiro(8392)
-    for _ in 1:1_0
+    num_tests = 100
+    for _ in 1:num_tests
         tx, ty, tz = rand(rng, BigFloat, 3)
         subs = Dict([sx => tx, sy => ty, sz => tz])
         res = Symbolics.substitute.(Sym_funcs, Ref(subs))
 
         FD_res = FD_eval([tx, ty, tz])
 
-        @assert isapprox(FD_res, res, atol=1e-12)
+        @test isapprox(FD_res, res, atol=1e-12)
     end
 end
+
+

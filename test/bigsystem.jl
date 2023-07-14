@@ -19,13 +19,13 @@ const X = reshape([i for i in 1:N for j in 1:N], N, N)
 const Y = reshape([j for i in 1:N for j in 1:N], N, N)
 const α₁ = 1.0 .* (X .>= 4 * N / 5)
 
-const Mx = Tridiagonal([1.0 for i in 1:(N - 1)], [-2.0 for i in 1:N],
-    [1.0 for i in 1:(N - 1)])
+const Mx = Tridiagonal([1.0 for i in 1:(N-1)], [-2.0 for i in 1:N],
+    [1.0 for i in 1:(N-1)])
 const My = copy(Mx)
 Mx[2, 1] = 2.0
-Mx[end - 1, end] = 2.0
+Mx[end-1, end] = 2.0
 My[1, 2] = 2.0
-My[end, end - 1] = 2.0
+My[end, end-1] = 2.0
 
 # Define the initial condition as normal arrays
 @variables du[1:N, 1:N, 1:3] u[1:N, 1:N, 1:3] MyA[1:N, 1:N] AMx[1:N, 1:N] DA[1:N, 1:N]
@@ -51,8 +51,8 @@ end
 
 f(du, u, nothing, 0.0)
 
-multithreadedf = eval(ModelingToolkit.build_function(du, u, fillzeros = true,
-    parallel = ModelingToolkit.MultithreadedForm())[2])
+multithreadedf = eval(ModelingToolkit.build_function(du, u, fillzeros=true,
+    parallel=ModelingToolkit.MultithreadedForm())[2])
 
 MyA = zeros(N, N);
 AMx = zeros(N, N);
@@ -67,29 +67,8 @@ for i in 1:100
     @test _du ≈ _du2
 end
 
-#=
-jac = sparse(ModelingToolkit.jacobian(vec(du),vec(u)))
-fjac = eval(ModelingToolkit.build_function(jac,u,parallel=ModelingToolkit.SerialForm())[2])
-multithreadedfjac = eval(ModelingToolkit.build_function(jac,u,parallel=ModelingToolkit.MultithreadedForm())[2])
-
-u = rand(N,N,3)
-J = similar(jac,Float64)
-fjac(J,u)
-
-J2 = similar(jac,Float64)
-multithreadedfjac(J2,u)
-@test J ≈ J2
-
-using FiniteDiff
-J3 = Array(similar(jac,Float64))
-FiniteDiff.finite_difference_jacobian!(J2,(du,u)->f!(du,u,nothing,nothing),u)
-maximum(J2 .- Array(J)) < 1e-5
-=#
-
 jac = ModelingToolkit.sparsejacobian(vec(du), vec(u))
 serialjac = eval(ModelingToolkit.build_function(vec(jac), u)[2])
-#multithreadedjac = eval(ModelingToolkit.build_function(vec(jac), u,
-#    parallel = ModelingToolkit.MultithreadedForm())[2])
 
 MyA = zeros(N, N)
 AMx = zeros(N, N)
@@ -100,12 +79,3 @@ _u = rand(N, N, 3)
 f(_du, _u, nothing, 0.0)
 multithreadedf(_du, _u)
 
-#=
-using BenchmarkTools
-@btime f(_du,_u,nothing,0.0)
-@btime multithreadedf(_du,_u)
-
-_jac = similar(jac,Float64)
-@btime serialjac(_jac,_u)
-@btime multithreadedjac(_jac,_u)
-=#
