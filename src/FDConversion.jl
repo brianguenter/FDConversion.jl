@@ -118,17 +118,10 @@ function _to_FD!(sym_node, cache::IdDict, visited::IdDict)
 end
 
 
-"""
-Converts from `Symbolics` form to `FastDifferentiation` form and computes Jacobian with respect to `diff_variables`.
-If `fast_differentiation=false` the result will be in Symbolics form. If `fast_differentiation=true` 
-then the result will be a two tuple. The first tuple entry will be `function` converted to `FastDifferentiation` form. 
-The second tuple term will be `diff_variables` converted to `FastDifferentiation` form.
-These two values can then be used to make an efficient executable using `make_function`."""
-function fd_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, differentiation_variables::AbstractVector{Symbolics.Num}; in_place=false, fast_differentiation=false)
+function remap(fd_function_to_call, symbolics_function, differentiation_variables::AbstractVector{Symbolics.Num}, fast_differentiation::Bool)
     fd_func, variable_map = to_fd(symbolics_function)
     partial_vars = map(x -> variable_map[x], differentiation_variables)
-    tmp = FD.jacobian(fd_func, partial_vars)
-
+    tmp = fd_function_to_call(fd_func, partial_vars)
     if fast_differentiation
         return fd_func, variable_map #return FastDifferentiation expression to be passed to make_function for efficient evaluation
     else
@@ -137,15 +130,25 @@ function fd_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, different
         return to_symbolics(tmp, reverse_map, reverse_variable_map) #return Symbolics expression for further evaluation
     end
 end
+"""
+Converts from `Symbolics` form to `FastDifferentiation` form and computes Jacobian with respect to `diff_variables`.
+If `fast_differentiation=false` the result will be in Symbolics form. If `fast_differentiation=true` 
+then the result will be a two tuple. The first tuple entry will be `function` converted to `FastDifferentiation` form. 
+The second tuple term will be `diff_variables` converted to `FastDifferentiation` form.
+These two values can then be used to make an efficient executable using `make_function`."""
+fd_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, differentiation_variables::AbstractVector{Symbolics.Num}; fast_differentiation=false) = remap(FD.jacobian, symbolics_function, differentiation_variables, fast_differentiation)
 export fd_jacobian
 
+fd_sparse_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, differentiation_variables::AbstractVector{Symbolics.Num}; fast_differentiation=false) = remap(FD.sparse_jacobian, symbolics_function, differentiation_variables, fast_differentiation)
+export fd_sparse_jacobian
 
-function fd_sparse_jacobian()
-end
-function fd_hessian()
-end
-function fd_sparse_hessian()
-end
+fd_hessian(symbolics_function::Symbolics.Num, differentiation_variables::AbstractVector{Symbolics.Num}; fast_differentiation=false) = remap(FD.hessian, symbolics_function, differentiation_variables, fast_differentiation)
+export fd_sparse_hessian
+
+fd_sparse_hessian(symbolics_function::Symbolics.Num, differentiation_variables::AbstractVector{Symbolics.Num}; fast_differentiation=false) = remap(FD.sparse_hessian, symbolics_function, differentiation_variables, fast_differentiation)
+export fd_sparse_hessian
+
+fd_make_function(a::Tuple{T,S}; in_place=false) where {T<:AbstractArray{<:Node},S<:AbstractVector{<:Node}} = FD.make_function(a[1], a[2], in_place=in_place)
 #etc. for Jv Jᵀv Hv
 
 # export FastDifferentiation.make_function
