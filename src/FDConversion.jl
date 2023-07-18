@@ -37,18 +37,13 @@ function _to_symbolics!(a::T, cache::IdDict, variable_map::IdDict) where {T<:FD.
     end
 end
 
-function to_symbolics(a::T) where {T<:FD.Node}
-    cache = IdDict()
-    variable_map = IdDict()
+function to_symbolics(a::T, cache::IdDict=IdDict(), variable_map::IdDict=IdDict()) where {T<:FD.Node}
     _to_symbolics!(a, cache, variable_map)
     return cache[a], variable_map
 end
 export to_symbolics
 
-function to_symbolics(a::AbstractArray{T}) where {T<:FD.Node}
-    cache::IdDict = IdDict()
-    variable_map::IdDict = IdDict()
-
+function to_symbolics(a::AbstractArray{T}, cache::IdDict=IdDict(), variable_map::IdDict=IdDict()) where {T<:FD.Node}
     _to_symbolics!.(a, Ref(cache), Ref(variable_map))
     return map(x -> cache[x], a), variable_map
 end
@@ -129,10 +124,20 @@ If `fast_differentiation=false` the result will be in Symbolics form. If `fast_d
 then the result will be a two tuple. The first tuple entry will be `function` converted to `FastDifferentiation` form. 
 The second tuple term will be `diff_variables` converted to `FastDifferentiation` form.
 These two values can then be used to make an efficient executable using `make_function`."""
-function fd_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, differentiation_variables::AbstractVector{Symbolics.Num}, fast_differentiation=false)
-    fd_func = to_fd(func)
-    tmp = jacobian(fd_func)
+function fd_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, differentiation_variables::AbstractVector{Symbolics.Num}; in_place=false, fast_differentiation=false)
+    fd_func, variable_map = to_fd(symbolics_function)
+    partial_vars = map(x -> variable_map[x], differentiation_variables)
+    tmp = FD.jacobian(fd_func, partial_vars)
+
+    if fast_differentiation
+        return fd_func, variable_map #return FastDifferentiation expression to be passed to make_function for efficient evaluation
+    else
+        reverse_map = IdDict{Any,Any}(map(x -> variable_map[x] => x, differentiation_variables))
+        reverse_variable_map = deepcopy(reverse_map)
+        return to_symbolics(tmp, reverse_map, reverse_variable_map) #return Symbolics expression for further evaluation
+    end
 end
+export fd_jacobian
 
 
 function fd_sparse_jacobian()
