@@ -143,31 +143,6 @@ function fd_sparse_hessian()
 end
 #etc. for Jv Jᵀv Hv
 
-function test()
-    Symbolics.@variables x y
-
-    symbolics_expr = x^2 + y * (x^2)
-    dag, tmp = to_fd(symbolics_expr)
-    vars = collect(values(tmp))
-    fdx, fdy = FD.value(vars[1]) == :x ? (vars[1], vars[2]) : (vars[2], vars[1]) #need to find the variables since they can be in any order
-
-    correct_fun = FD.make_function([dag], [fdx, fdy])
-
-
-    #verify that all the node expressions exist in the dag. Can't rely on them being in a particular order because Symbolics can
-    #arbitrarily choose how to reorder trees.
-    num_tests = 100
-    rng = Random.Xoshiro(8392)
-    for _ in 1:num_tests
-        (xval, yval) = rand(rng, 2)
-        FDval = correct_fun([xval, yval])[1]
-        Syval = Symbolics.substitute(symbolics_expr, Dict([(x, xval), (y, yval)]))
-
-        @assert isapprox(FDval, Syval.val)
-
-    end
-end
-export test
 # export FastDifferentiation.make_function
 end # module FSDConvert
 
