@@ -6,6 +6,11 @@ import FastDifferentiation as FD
 using FastDifferentiation.AutomaticDifferentiation
 import Random
 
+#=
+try implementing these
+    https://github.com/JuliaSymbolics/SymbolicUtils.jl/blob/master/src/interface.jl
+=#
+
 """converts from Node to Symbolics expression"""
 function _to_symbolics!(a::T, cache::IdDict, variable_map::IdDict) where {T<:FD.Node}
     tmp = get(cache, a, nothing)
@@ -48,6 +53,8 @@ function to_symbolics(a::AbstractArray{T}) where {T<:FD.Node}
     return map(x -> cache[x], a), variable_map
 end
 
+
+#TODO pretty sure this will never be called may be able to delete this
 to_fd(x::FD.AutomaticDifferentiation.NoDeriv, cache, substitions) = FD.Node(NaN) #when taking the derivative with respect to the first element of 1.0*x Symbolics.derivative will return Symbolics.NoDeriv. These derivative values will never be used (or should never be used) in my derivative computation so set to NaN so error will show up if this ever happens.
 
 
@@ -58,6 +65,11 @@ function to_fd(x::Real)
 end
 export to_fd
 
+
+#TODO add this to _to_FD
+# if symtype(expr) <: AbstractArray && fail
+#     error("Differentiation of expressions involving arrays and array variables is not yet supported.")
+# end
 
 function _to_FD(sym_node, cache::IdDict, visited::IdDict)
     # Substitutions are done on a Node graph, not a SymbolicsUtils.Sym graph. As a consequence the values
@@ -107,3 +119,22 @@ function _to_FD(sym_node, cache::IdDict, visited::IdDict)
 end
 
 end # module FSDConvert
+
+
+"""
+Converts from `Symbolics` form to `FastDifferentiation` form and computes Jacobian with respect to `diff_variables`.
+If `fast_differentiation=false` the result will be in Symbolics form. If `fast_differentiation=true` 
+then the result will be a two tuple. The first tuple entry will be `function` converted to `FastDifferentiation` form. 
+The second tuple term will be `diff_variables` converted to `FastDifferentiation` form.
+These two values can then be used to make an efficient executable using `make_function`."""
+function symbolics_jacobian(function::AbstractArray{Num},diff_variables::AbstractVector{Num}, fast_differentiation=false)
+end
+
+
+function symbolics_sparse_jacobian()
+function symbolics_hessian()
+function symbolics_sparse_hessian()
+#etc. for Jv Jᵀv Hv
+
+export FastDifferentiation.make_function
+end
