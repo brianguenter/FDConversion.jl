@@ -54,30 +54,34 @@ function to_symbolics(a::AbstractArray{T}) where {T<:FD.Node}
 end
 
 
-#TODO pretty sure this will never be called may be able to delete this
-to_fd(x::FD.AutomaticDifferentiation.NoDeriv, cache, substitions) = FD.Node(NaN) #when taking the derivative with respect to the first element of 1.0*x Symbolics.derivative will return Symbolics.NoDeriv. These derivative values will never be used (or should never be used) in my derivative computation so set to NaN so error will show up if this ever happens.
+function to_fd(x::Real, cache=IdDict(), substitutions=IdDict())
+    result = _to_FD!(x, cache, substitutions)
+    syms = collect(filter(x -> SymbolicUtils.issym(x), keys(cache)))
+    sym_map = Dict(zip(syms, map(x -> cache[x], syms)))
 
-
-function to_fd(x::Real)
-    cache = IdDict()
-    substitutions = IdDict()
-    return _to_FD(x, cache, substitutions)
+    return result, sym_map
 end
 export to_fd
 
+function to_fd(x::AbstractArray{<:Real})
+    cache = IdDict()
+    substitutions = IdDict()
+    result = _to_FD!.(x, Ref(cache), Ref(substitutions))
+    syms = collect(filter(x -> SymbolicUtils.issym(x), keys(cache)))
+    sym_map = Dict(zip(syms, map(x -> cache[x], syms))) #map from symbolics variables to FD variables
+    return result, sym_map
+end
 
-#TODO add this to _to_FD
-# if symtype(expr) <: AbstractArray && fail
-#     error("Differentiation of expressions involving arrays and array variables is not yet supported.")
-# end
-
-function _to_FD(sym_node, cache::IdDict, visited::IdDict)
+function _to_FD!(sym_node, cache::IdDict, visited::IdDict)
     # Substitutions are done on a Node graph, not a SymbolicsUtils.Sym graph. As a consequence the values
     # in substitutions Dict are Node not Sym type. cache has keys (op,args...) where op is generally a function type but sometimes a Sym, 
     # and args are all Node types.
 
+    @assert !(typeof(sym_node) <: Symbolics.Arr) "Differentiation of expressions involving arrays and array variables is not yet supported."
+
     symx = isa(sym_node, Symbolics.Num) ? sym_node.val : sym_node
     @assert typeof(symx) != Symbolics.Num
+
 
     tmpsub = get(visited, symx, nothing)
     if tmpsub !== nothing
@@ -102,7 +106,7 @@ function _to_FD(sym_node, cache::IdDict, visited::IdDict)
         numargs = length(SymbolicUtils.arguments(symx))
         symargs = SymbolicUtils.arguments(symx)
 
-        args = _to_FD.(symargs, Ref(cache), Ref(visited))
+        args = _to_FD!.(symargs, Ref(cache), Ref(visited))
 
         key = (SymbolicUtils.operation(symx), args...)
         tmp = get(cache, key, nothing)
@@ -118,8 +122,6 @@ function _to_FD(sym_node, cache::IdDict, visited::IdDict)
     end
 end
 
-end # module FSDConvert
-
 
 """
 Converts from `Symbolics` form to `FastDifferentiation` form and computes Jacobian with respect to `diff_variables`.
@@ -127,14 +129,45 @@ If `fast_differentiation=false` the result will be in Symbolics form. If `fast_d
 then the result will be a two tuple. The first tuple entry will be `function` converted to `FastDifferentiation` form. 
 The second tuple term will be `diff_variables` converted to `FastDifferentiation` form.
 These two values can then be used to make an efficient executable using `make_function`."""
-function symbolics_jacobian(function::AbstractArray{Num},diff_variables::AbstractVector{Num}, fast_differentiation=false)
+function fd_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, differentiation_variables::AbstractVector{Symbolics.Num}, fast_differentiation=false)
+    fd_func = to_fd(func)
+    tmp = jacobian(fd_func)
 end
 
 
-function symbolics_sparse_jacobian()
-function symbolics_hessian()
-function symbolics_sparse_hessian()
+function fd_sparse_jacobian()
+end
+function fd_hessian()
+end
+function fd_sparse_hessian()
+end
 #etc. for Jv Jᵀv Hv
 
-export FastDifferentiation.make_function
+function test()
+    Symbolics.@variables x y
+
+    symbolics_expr = x^2 + y * (x^2)
+    dag, tmp = to_fd(symbolics_expr)
+    vars = collect(values(tmp))
+    fdx, fdy = FD.value(vars[1]) == :x ? (vars[1], vars[2]) : (vars[2], vars[1]) #need to find the variables since they can be in any order
+
+    correct_fun = FD.make_function([dag], [fdx, fdy])
+
+
+    #verify that all the node expressions exist in the dag. Can't rely on them being in a particular order because Symbolics can
+    #arbitrarily choose how to reorder trees.
+    num_tests = 100
+    rng = Random.Xoshiro(8392)
+    for _ in 1:num_tests
+        (xval, yval) = rand(rng, 2)
+        FDval = correct_fun([xval, yval])[1]
+        Syval = Symbolics.substitute(symbolics_expr, Dict([(x, xval), (y, yval)]))
+
+        @assert isapprox(FDval, Syval.val)
+
+    end
 end
+export test
+# export FastDifferentiation.make_function
+end # module FSDConvert
+

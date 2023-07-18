@@ -12,8 +12,8 @@ include("sphericalharmonics.jl")
     Symbolics.@variables x y
 
     symbolics_expr = x^2 + y * (x^2)
-    dag = to_fd(symbolics_expr)
-    vars = FD.variables(dag)
+    dag, tmp = to_fd(symbolics_expr)
+    vars = collect(values(tmp))
     fdx, fdy = FD.value(vars[1]) == :x ? (vars[1], vars[2]) : (vars[2], vars[1]) #need to find the variables since they can be in any order
 
     correct_fun = FD.make_function([dag], [fdx, fdy])
