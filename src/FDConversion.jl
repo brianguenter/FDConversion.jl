@@ -73,6 +73,9 @@ function _to_FD!(sym_node, cache::IdDict, visited::IdDict)
     # and args are all Node types.
 
     @assert !(typeof(sym_node) <: Symbolics.Arr) "Differentiation of expressions involving arrays and array variables is not yet supported."
+    if SymbolicUtils.istree(Symbolics.unwrap(sym_node))
+        @assert !SymbolicUtils.issym(SymbolicUtils.operation(Symbolics.unwrap(sym_node))) "expressions of the form `q(t)` not yet supported."
+    end
 
     symx = isa(sym_node, Symbolics.Num) ? sym_node.val : sym_node
     @assert typeof(symx) != Symbolics.Num
@@ -130,25 +133,45 @@ function remap(fd_function_to_call, symbolics_function, differentiation_variable
         return to_symbolics(tmp, reverse_map, reverse_variable_map) #return Symbolics expression for further evaluation
     end
 end
+
+
 """
 Converts from `Symbolics` form to `FastDifferentiation` form and computes Jacobian with respect to `diff_variables`.
-If `fast_differentiation=false` the result will be in Symbolics form. If `fast_differentiation=true` 
-then the result will be a two tuple. The first tuple entry will be `function` converted to `FastDifferentiation` form. 
-The second tuple term will be `diff_variables` converted to `FastDifferentiation` form.
-These two values can then be used to make an efficient executable using `make_function`."""
+If `fast_differentiation=false` returns result in Symbolics form. If `fast_differentiation=true` the result will be a 2-tuple. The first tuple entry will be the jacobian of `symbolics_function` converted to `FastDifferentiation` form. 
+The second tuple term will be `differentiation_variables` converted to `FastDifferentiation` form.
+This tuple can be passed to `fd_make_function` to create an efficient executable."""
 fd_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, differentiation_variables::AbstractVector{Symbolics.Num}; fast_differentiation=false) = remap(FD.jacobian, symbolics_function, differentiation_variables, fast_differentiation)
 export fd_jacobian
 
+"""
+Converts from `Symbolics` form to `FastDifferentiation` form and computes sparse Jacobian with respect to `diff_variables`.
+If `fast_differentiation=false` returns result in Symbolics form. If `fast_differentiation=true` the result will be a 2-tuple. The first tuple entry will be the sparse jacobian of `symbolics_function` converted to `FastDifferentiation` form. 
+The second tuple term will be `differentiation_variables` converted to `FastDifferentiation` form.
+This tuple can be passed to `fd_make_function` to create an efficient executable."""
 fd_sparse_jacobian(symbolics_function::AbstractArray{Symbolics.Num}, differentiation_variables::AbstractVector{Symbolics.Num}; fast_differentiation=false) = remap(FD.sparse_jacobian, symbolics_function, differentiation_variables, fast_differentiation)
 export fd_sparse_jacobian
 
+"""
+Converts from `Symbolics` form to `FastDifferentiation` form and computes Hessian with respect to `diff_variables`.
+If `fast_differentiation=false` returns result in Symbolics form. If `fast_differentiation=true` the result will be a 2-tuple. The first tuple entry will be the hessian of `symbolics_function` converted to `FastDifferentiation` form. 
+The second tuple term will be `differentiation_variables` converted to `FastDifferentiation` form.
+This tuple can be passed to `fd_make_function` to create an efficient executable."""
 fd_hessian(symbolics_function::Symbolics.Num, differentiation_variables::AbstractVector{Symbolics.Num}; fast_differentiation=false) = remap(FD.hessian, symbolics_function, differentiation_variables, fast_differentiation)
 export fd_sparse_hessian
 
+"""
+Converts from `Symbolics` form to `FastDifferentiation` form and computes sparse Hessian with respect to `diff_variables`.
+If `fast_differentiation=false` returns result in Symbolics form. If `fast_differentiation=true` the result will be a 2-tuple. The first tuple entry will be the sparse Hessian of `symbolics_function` converted to `FastDifferentiation` form. 
+The second tuple term will be `differentiation_variables` converted to `FastDifferentiation` form.
+This tuple can be passed to `fd_make_function` to create an efficient executable."""
 fd_sparse_hessian(symbolics_function::Symbolics.Num, differentiation_variables::AbstractVector{Symbolics.Num}; fast_differentiation=false) = remap(FD.sparse_hessian, symbolics_function, differentiation_variables, fast_differentiation)
 export fd_sparse_hessian
 
-fd_make_function(a::Tuple{T,S}; in_place=false) where {T<:AbstractArray{<:Node},S<:AbstractVector{<:Node}} = FD.make_function(a[1], a[2], in_place=in_place)
+"""
+Creates an efficient runtime generated function to evaluate the function defined in `a[1]` with arguments given by `a[2]`. Used in conjuction with fd_jacobian,fd_sparse_jacobian,fd_hessian,fd_sparse_hessian.
+"""
+fd_make_function(a::Tuple{T,S}; in_place=false) where {T<:AbstractArray{<:FD.Node},S<:AbstractVector{<:FD.Node}} = FD.make_function(a[1], a[2], in_place=in_place)
+export fd_make_function
 #etc. for Jv Jᵀv Hv
 
 # export FastDifferentiation.make_function
